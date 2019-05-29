@@ -4,93 +4,23 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/pkg/errors"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
-
 	flag "github.com/spf13/pflag"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
-// Client represents the wrapper of Kubernetes API client
-type Client struct {
-	clientConfig clientcmd.ClientConfig
-	clientset    kubernetes.Interface
-}
-
-// NewClient creates Client object using local kubecfg
-func NewClient(kubeconfig, context string) (*Client, error) {
-	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		&clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfig},
-		&clientcmd.ConfigOverrides{CurrentContext: context})
-
-	config, err := clientConfig.ClientConfig()
-	if err != nil {
-		return nil, errors.Wrap(err, "falied to load local kubeconfig")
-	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to load clientset")
-	}
-
-	return &Client{
-		clientConfig: clientConfig,
-		clientset:    clientset,
-	}, nil
-}
-
-// NewClientInCluster creates Client object in Kubernetes cluster
-func NewClientInCluster() (*Client, error) {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to load kubeconfig in cluster")
-	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, errors.Wrap(err, "falied to load clientset")
-	}
-
-	return &Client{
-		clientset: clientset,
-	}, nil
-}
-
-// ListPods returns the list of Pods
-func (c *Client) ListPods(namespace string) (*corev1.PodList, error) {
-	pods, err := c.clientset.CoreV1().Pods(namespace).List(metav1.ListOptions{})
-	//pods, err := c.clientset.Pods(namespace).List(metav1.ListOptions{})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to retrieve Pods")
-	}
-
-	return pods, nil
-}
-
-// NamespaceInConfig returns namespace set in kubeconfig
-func (c *Client) NamespaceInConfig() (string, error) {
-	if c.clientConfig == nil {
-		return "", errors.New("clientConfig is not set")
-	}
-
-	rawConfig, err := c.clientConfig.RawConfig()
-	if err != nil {
-		return "", errors.Wrap(err, "failed to load rawConfig")
-	}
-
-	return rawConfig.Contexts[rawConfig.CurrentContext].Namespace, nil
-}
+const (
+	defaultMaxCount  = 10
+	acceptedK8sKinds = `(Service|StatefulSet|Deployment|CronJob|LimitRange|DaemonSet)`
+)
 
 func main() {
 	var (
 		context    string
 		dryRun     bool
 		kubeconfig string
+		maxCount   int64
 		namespace  string
+		directory  string
 	)
 
 	flags := flag.NewFlagSet("k8stail", flag.ExitOnError)
@@ -99,14 +29,24 @@ func main() {
 	}
 
 	flags.StringVar(&context, "context", "", "Kubernetes context")
-	flags.BoolVar(&dryRun, "dry-run", false, "Dry run")
+	flags.BoolVar(&dryRun, "dry-run", true, "Dry run")
 	flags.StringVar(&kubeconfig, "kubeconfig", "", "Path of kubeconfig")
+	flags.Int64Var(&maxCount, "max-count", int64(defaultMaxCount), "Number of Jobs to remain")
 	flags.StringVar(&namespace, "namespace", "", "Kubernetes namespace")
+	flags.StringVar(&directory, "directory", "", "Path to directory with manifests (_commons will be added automatically)")
 
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+
+	if directory == "" {
+		fmt.Fprintln(os.Stderr, "--directory must be set")
+		os.Exit(1)
+	}
+
+	directories := []string{"/Users/ealebed/Code/loopme/k8s/datacenters/_commons"}
+	directories = append(directories, directory)
 
 	if kubeconfig == "" {
 		if os.Getenv("KUBECONFIG") != "" {
@@ -124,6 +64,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	client = c
+
+	if namespace == "kube-system" {
+		fmt.Println("  !!! You can't manage this namespace")
+		os.Exit(1)
+	}
 	if namespace == "" {
 		namespaceInConfig, err := c.NamespaceInConfig()
 		if err != nil {
@@ -131,24 +77,18 @@ func main() {
 			os.Exit(1)
 		}
 		if namespaceInConfig == "" {
-			namespace = metav1.NamespaceAll
+			namespace = "default"
 		} else {
 			namespace = namespaceInConfig
 		}
 	}
-	client = c
 
-	pods, err := client.ListPods(namespace)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	client.DeploymentsCleaner(namespace, dryRun, directories)
+	client.ServicesCleaner(namespace, dryRun, directories)
+	client.CronJobsCleaner(namespace, dryRun, directories)
+	client.StatefulSetsCleaner(namespace, dryRun, directories)
+	client.DaemonSetsCleaner(namespace, dryRun, directories)
+	client.LimitRangesCleaner(namespace, dryRun, directories)
+	client.JobAndPodCleaner(namespace, maxCount, dryRun)
 
-	for _, pod := range pods.Items {
-		fmt.Printf("   Pod %s\n", pod.Name)
-	}
-		
-	if dryRun {
-		fmt.Printf("DRY_RUN enabled ... [dry-run]\n")
-	}
 }
