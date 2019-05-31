@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/fatih/color"
 	"github.com/pkg/errors"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,9 +29,9 @@ func (c *Client) DeleteDeployment(deployment appsv1.Deployment) error {
 	return nil
 }
 
-// DeploymentsCleaner deletes all Deployments in k8s cluster (left slice) which are absent in VCS (right slice)
+// DeploymentsCleaner deletes all Deployments in k8s cluster which are absent in VCS
 func (c *Client) DeploymentsCleaner(namespace string, dryRun bool, directories []string) error {
-	var left, right []string
+	var left []string
 
 	clusterDeployments, err := c.ListDeployments(namespace)
 	if err != nil {
@@ -41,28 +42,19 @@ func (c *Client) DeploymentsCleaner(namespace string, dryRun bool, directories [
 		left = append(left, value.Name)
 	}
 
-	directoryDeployments, err := CollectObjectsFromDir(directories)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	for _, value := range directoryDeployments["Deployment"] {
-		right = append(right, value)
-	}
-
-	objectsToDelete := Except(left, right)
-	// Debug
-	fmt.Println("**************************")
-	fmt.Println(objectsToDelete)
-	fmt.Println("**************************")
+	objectsToDelete := Except(left, "Deployment", directories)
 
 	for _, item := range objectsToDelete {
 		for _, deployment := range clusterDeployments.Items {
 			if item == deployment.Name {
 				if dryRun {
-					fmt.Printf("  Deleting Deployment %s [dry-run]\n", deployment.Name)
+					color.Yellow("******************************************************************************")
+					color.Yellow("  Deleting Deployment %s [dry-run]\n", deployment.Name)
+					color.Yellow("******************************************************************************")
 				} else {
-					fmt.Printf("  Deleting Deployment %s\n", deployment.Name)
+					color.Red("******************************************************************************")
+					color.Red("  Deleting Deployment %s\n", deployment.Name)
+					color.Red("******************************************************************************")
 					if err := c.DeleteDeployment(deployment); err != nil {
 						fmt.Fprintln(os.Stderr, err)
 						os.Exit(1)
@@ -71,5 +63,6 @@ func (c *Client) DeploymentsCleaner(namespace string, dryRun bool, directories [
 			}
 		}
 	}
+
 	return nil
 }

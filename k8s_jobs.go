@@ -5,6 +5,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/fatih/color"
 	"github.com/pkg/errors"
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -125,9 +126,13 @@ func (c *Client) JobAndPodCleaner(namespace string, maxCount int64, dryRun bool)
 			}
 
 			if dryRun {
-				fmt.Printf("Deleting Job %s  [dry-run]\n", job.Name)
+				color.Yellow("******************************************************************************")
+				color.Yellow("Deleting Job %s  [dry-run]\n", job.Name)
+				color.Yellow("******************************************************************************")
 			} else {
-				fmt.Printf("Deleting Job %s \n", job.Name)
+				color.Red("******************************************************************************")
+				color.Red("Deleting Job %s \n", job.Name)
+				color.Red("******************************************************************************")
 				if err := c.DeleteJob(job); err != nil {
 					fmt.Fprintln(os.Stderr, err)
 					os.Exit(1)
@@ -136,9 +141,13 @@ func (c *Client) JobAndPodCleaner(namespace string, maxCount int64, dryRun bool)
 
 			for _, pod := range podGroup[job.Name] {
 				if dryRun {
-					fmt.Printf("  Deleting Pod %s [dry-run]\n", pod.Name)
+					color.Yellow("******************************************************************************")
+					color.Yellow("  Deleting Pod %s [dry-run]\n", pod.Name)
+					color.Yellow("******************************************************************************")
 				} else {
-					fmt.Printf("  Deleting Pod %s\n", pod.Name)
+					color.Red("******************************************************************************")
+					color.Red("  Deleting Pod %s\n", pod.Name)
+					color.Red("******************************************************************************")
 					if err := c.DeletePod(pod); err != nil {
 						fmt.Fprintln(os.Stderr, err)
 						os.Exit(1)
@@ -147,5 +156,6 @@ func (c *Client) JobAndPodCleaner(namespace string, maxCount int64, dryRun bool)
 			}
 		}
 	}
+
 	return nil
 }

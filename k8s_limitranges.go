@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/fatih/color"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,9 +29,9 @@ func (c *Client) DeleteLimitRange(limitrange corev1.LimitRange) error {
 	return nil
 }
 
-// LimitRangesCleaner deletes all LimitRanges in k8s cluster (left slice) which are absent in VCS (right slice)
+// LimitRangesCleaner deletes all LimitRanges in k8s cluster which are absent in VCS
 func (c *Client) LimitRangesCleaner(namespace string, dryRun bool, directories []string) error {
-	var left, right []string
+	var left []string
 
 	clusterLimitranges, err := c.ListLimitRanges(namespace)
 	if err != nil {
@@ -38,31 +39,27 @@ func (c *Client) LimitRangesCleaner(namespace string, dryRun bool, directories [
 		os.Exit(1)
 	}
 	for _, value := range clusterLimitranges.Items {
-		left = append(left, value.Name)
+		if value.Name == "limits" {
+			color.Red("You can't delete LimitRange %s", value.Name)
+			continue
+		} else {
+			left = append(left, value.Name)
+		}
 	}
 
-	directoryLimitranges, err := CollectObjectsFromDir(directories)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	for _, value := range directoryLimitranges["LimitRange"] {
-		right = append(right, value)
-	}
-
-	objectsToDelete := Except(left, right)
-	// Debug
-	fmt.Println("**************************")
-	fmt.Println(objectsToDelete)
-	fmt.Println("**************************")
+	objectsToDelete := Except(left, "LimitRange", directories)
 
 	for _, item := range objectsToDelete {
 		for _, limitrange := range clusterLimitranges.Items {
 			if item == limitrange.Name {
 				if dryRun {
-					fmt.Printf("  Deleting LimitRange %s [dry-run]\n", limitrange.Name)
+					color.Yellow("******************************************************************************")
+					color.Yellow("  Deleting LimitRange %s [dry-run]\n", limitrange.Name)
+					color.Yellow("******************************************************************************")
 				} else {
-					fmt.Printf("  Deleting LimitRange %s\n", limitrange.Name)
+					color.Red("******************************************************************************")
+					color.Red("  Deleting LimitRange %s\n", limitrange.Name)
+					color.Red("******************************************************************************")
 					if err := c.DeleteLimitRange(limitrange); err != nil {
 						fmt.Fprintln(os.Stderr, err)
 						os.Exit(1)
@@ -71,5 +68,6 @@ func (c *Client) LimitRangesCleaner(namespace string, dryRun bool, directories [
 			}
 		}
 	}
+
 	return nil
 }

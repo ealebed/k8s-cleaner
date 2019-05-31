@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/fatih/color"
 	"github.com/pkg/errors"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,9 +29,9 @@ func (c *Client) DeleteStatefulSet(statefulset appsv1.StatefulSet) error {
 	return nil
 }
 
-// StatefulSetsCleaner deletes all StatefulSets in k8s cluster (left slice) which are absent in VCS (right slice)
+// StatefulSetsCleaner deletes all StatefulSets in k8s cluster which are absent in VCS
 func (c *Client) StatefulSetsCleaner(namespace string, dryRun bool, directories []string) error {
-	var left, right []string
+	var left []string
 
 	clusterStatefulsets, err := c.ListStatefulSets(namespace)
 	if err != nil {
@@ -41,28 +42,19 @@ func (c *Client) StatefulSetsCleaner(namespace string, dryRun bool, directories 
 		left = append(left, value.Name)
 	}
 
-	directoryStatefulsets, err := CollectObjectsFromDir(directories)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	for _, value := range directoryStatefulsets["StatefulSet"] {
-		right = append(right, value)
-	}
-
-	objectsToDelete := Except(left, right)
-	// Debug
-	fmt.Println("**************************")
-	fmt.Println(objectsToDelete)
-	fmt.Println("**************************")
+	objectsToDelete := Except(left, "StatefulSet", directories)
 
 	for _, item := range objectsToDelete {
 		for _, statefulset := range clusterStatefulsets.Items {
 			if item == statefulset.Name {
 				if dryRun {
-					fmt.Printf("  Deleting StatefulSet %s [dry-run]\n", statefulset.Name)
+					color.Yellow("******************************************************************************")
+					color.Yellow("  Deleting StatefulSet %s [dry-run]\n", statefulset.Name)
+					color.Yellow("******************************************************************************")
 				} else {
-					fmt.Printf("  Deleting StatefulSet %s\n", statefulset.Name)
+					color.Red("******************************************************************************")
+					color.Red("  Deleting StatefulSet %s\n", statefulset.Name)
+					color.Red("******************************************************************************")
 					if err := c.DeleteStatefulSet(statefulset); err != nil {
 						fmt.Fprintln(os.Stderr, err)
 						os.Exit(1)
@@ -71,5 +63,6 @@ func (c *Client) StatefulSetsCleaner(namespace string, dryRun bool, directories 
 			}
 		}
 	}
+
 	return nil
 }

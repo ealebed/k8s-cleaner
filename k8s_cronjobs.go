@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/fatih/color"
 	"github.com/pkg/errors"
 	v1beta1 "k8s.io/api/batch/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,9 +29,9 @@ func (c *Client) DeleteCronJob(cronjob v1beta1.CronJob) error {
 	return nil
 }
 
-// CronJobsCleaner deletes all CronJobs in k8s cluster (left slice) which are absent in VCS (right slice)
+// CronJobsCleaner deletes all CronJobs in k8s cluster which are absent in VCS
 func (c *Client) CronJobsCleaner(namespace string, dryRun bool, directories []string) error {
-	var left, right []string
+	var left []string
 
 	clusterCronjobs, err := c.ListCronJobs(namespace)
 	if err != nil {
@@ -38,31 +39,27 @@ func (c *Client) CronJobsCleaner(namespace string, dryRun bool, directories []st
 		os.Exit(1)
 	}
 	for _, value := range clusterCronjobs.Items {
-		left = append(left, value.Name)
+		if value.Name == "cert-manager-webhook-ca-sync" {
+			color.Red("You can't delete cronjob %s", value.Name)
+			continue
+		} else {
+			left = append(left, value.Name)
+		}
 	}
 
-	directoryCronjobs, err := CollectObjectsFromDir(directories)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	for _, value := range directoryCronjobs["CronJob"] {
-		right = append(right, value)
-	}
-
-	objectsToDelete := Except(left, right)
-	// Debug
-	fmt.Println("**************************")
-	fmt.Println(objectsToDelete)
-	fmt.Println("**************************")
+	objectsToDelete := Except(left, "CronJob", directories)
 
 	for _, item := range objectsToDelete {
 		for _, cronjob := range clusterCronjobs.Items {
 			if item == cronjob.Name {
 				if dryRun {
-					fmt.Printf("  Deleting CronJob %s [dry-run]\n", cronjob.Name)
+					color.Yellow("******************************************************************************")
+					color.Yellow("  Deleting CronJob %s [dry-run]\n", cronjob.Name)
+					color.Yellow("******************************************************************************")
 				} else {
-					fmt.Printf("  Deleting CronJob %s\n", cronjob.Name)
+					color.Red("******************************************************************************")
+					color.Red("  Deleting CronJob %s\n", cronjob.Name)
+					color.Red("******************************************************************************")
 					if err := c.DeleteCronJob(cronjob); err != nil {
 						fmt.Fprintln(os.Stderr, err)
 						os.Exit(1)

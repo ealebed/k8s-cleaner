@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/fatih/color"
 	"github.com/pkg/errors"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,9 +29,9 @@ func (c *Client) DeleteDaemonSet(daemonset appsv1.DaemonSet) error {
 	return nil
 }
 
-// DaemonSetsCleaner deletes all DaemonSets in k8s cluster (left slice) which are absent in VCS (right slice)
+// DaemonSetsCleaner deletes all DaemonSets in k8s cluster which are absent in VCS
 func (c *Client) DaemonSetsCleaner(namespace string, dryRun bool, directories []string) error {
-	var left, right []string
+	var left []string
 
 	clusterDaemonsets, err := c.ListDaemonSets(namespace)
 	if err != nil {
@@ -41,28 +42,19 @@ func (c *Client) DaemonSetsCleaner(namespace string, dryRun bool, directories []
 		left = append(left, value.Name)
 	}
 
-	directoryDaemonsets, err := CollectObjectsFromDir(directories)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	for _, value := range directoryDaemonsets["DaemonSet"] {
-		right = append(right, value)
-	}
-
-	objectsToDelete := Except(left, right)
-	// Debug
-	fmt.Println("**************************")
-	fmt.Println(objectsToDelete)
-	fmt.Println("**************************")
+	objectsToDelete := Except(left, "DaemonSet", directories)
 
 	for _, item := range objectsToDelete {
 		for _, daemonset := range clusterDaemonsets.Items {
 			if item == daemonset.Name {
 				if dryRun {
-					fmt.Printf("  Deleting DaemonSet %s [dry-run]\n", daemonset.Name)
+					color.Yellow("******************************************************************************")
+					color.Yellow("  Deleting DaemonSet %s [dry-run]\n", daemonset.Name)
+					color.Yellow("******************************************************************************")
 				} else {
-					fmt.Printf("  Deleting DaemonSet %s\n", daemonset.Name)
+					color.Red("******************************************************************************")
+					color.Red("  Deleting DaemonSet %s\n", daemonset.Name)
+					color.Red("******************************************************************************")
 					if err := c.DeleteDaemonSet(daemonset); err != nil {
 						fmt.Fprintln(os.Stderr, err)
 						os.Exit(1)
@@ -71,5 +63,6 @@ func (c *Client) DaemonSetsCleaner(namespace string, dryRun bool, directories []
 			}
 		}
 	}
+
 	return nil
 }

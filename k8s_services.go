@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 
+	"github.com/fatih/color"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,46 +29,42 @@ func (c *Client) DeleteService(service corev1.Service) error {
 	return nil
 }
 
-// ServicesCleaner deletes all Services in k8s cluster (left slice) which are absent in VCS (right slice)
+// ServicesCleaner deletes all Services in k8s cluster which are absent in VCS
 func (c *Client) ServicesCleaner(namespace string, dryRun bool, directories []string) error {
-	var left, right []string
+	var left []string
 
+	// Get service list from cluster
 	clusterServices, err := c.ListServices(namespace)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+
+	// Put services names (except "kubernetes") to left slice for future comparing
 	for _, value := range clusterServices.Items {
 		if value.Name == "kubernetes" {
-			log.Printf("You can't delete service %s", value.Name)
+			color.Red("You can't delete service %s", value.Name)
 			continue
 		} else {
 			left = append(left, value.Name)
 		}
 	}
 
-	directoryServices, err := CollectObjectsFromDir(directories)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	for _, value := range directoryServices["Service"] {
-		right = append(right, value)
-	}
+	// Get slice with services in k8s cluster which are absent in VCS
+	objectsToDelete := Except(left, "Service", directories)
 
-	objectsToDelete := Except(left, right)
-	// Debug
-	fmt.Println("**************************")
-	fmt.Println(objectsToDelete)
-	fmt.Println("**************************")
-
+	// Delete services absent in VCS
 	for _, item := range objectsToDelete {
 		for _, service := range clusterServices.Items {
 			if item == service.Name {
 				if dryRun {
-					fmt.Printf("  Deleting Service %s [dry-run]\n", service.Name)
+					color.Yellow("******************************************************************************")
+					color.Yellow("  Deleting Service %s [dry-run]\n", service.Name)
+					color.Yellow("******************************************************************************")
 				} else {
-					fmt.Printf("  Deleting Service %s\n", service.Name)
+					color.Red("******************************************************************************")
+					color.Red("  Deleting Service %s\n", service.Name)
+					color.Red("******************************************************************************")
 					if err := c.DeleteService(service); err != nil {
 						fmt.Fprintln(os.Stderr, err)
 						os.Exit(1)

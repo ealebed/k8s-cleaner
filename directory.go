@@ -3,12 +3,12 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/fatih/color"
 	appsv1 "k8s.io/api/apps/v1"
 	v1beta1 "k8s.io/api/batch/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -35,7 +35,7 @@ func CollectObjectsFromDir(directories []string) (map[string][]string, error) {
 			acceptedK8sTypes := regexp.MustCompile(acceptedK8sKinds)
 			fileAsString, err := ioutil.ReadFile(path)
 			if err != nil {
-				log.Println(fmt.Sprintf("Error while reading YAML manifest. Err was: %s", err))
+				color.Red(fmt.Sprintf("Error while reading YAML manifest. Err was: %s", err))
 			}
 			sepYamlfiles := strings.Split(string(fileAsString), "---")
 
@@ -48,12 +48,12 @@ func CollectObjectsFromDir(directories []string) (map[string][]string, error) {
 				decode := scheme.Codecs.UniversalDeserializer().Decode
 				obj, groupVersionKind, err := decode([]byte(file), nil, nil)
 				if err != nil {
-					log.Println(fmt.Sprintf("Error while decoding YAML object. Err was: %s", err))
+					color.Red(fmt.Sprintf("Error while decoding YAML object. Err was: %s", err))
 					continue
 				}
 
 				if !acceptedK8sTypes.MatchString(groupVersionKind.Kind) {
-					log.Printf("Skipping object with type: %s", groupVersionKind.Kind)
+					color.Cyan("Skipping object with type: %s", groupVersionKind.Kind)
 				} else {
 
 					switch obj.(type) {
@@ -70,7 +70,7 @@ func CollectObjectsFromDir(directories []string) (map[string][]string, error) {
 					case *appsv1.DaemonSet:
 						resourceMap[groupVersionKind.Kind] = append(resourceMap[groupVersionKind.Kind], obj.(*appsv1.DaemonSet).ObjectMeta.Name)
 					default:
-						log.Printf("Skip type: %s", groupVersionKind.Kind)
+						continue
 					}
 				}
 			}
@@ -82,11 +82,23 @@ func CollectObjectsFromDir(directories []string) (map[string][]string, error) {
 			os.Exit(1)
 		}
 	}
+
 	return resourceMap, nil
 }
 
 // Except returns a new slice, containing all items that are in the left slice (k8scluster) but not the right slice (VCS)
-func Except(left, right []string) []string {
+func Except(left []string, kind string, directories []string) []string {
+	var right []string
+
+	directoryObjects, err := CollectObjectsFromDir(directories)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	for _, value := range directoryObjects[kind] {
+		right = append(right, value)
+	}
+
 	for i := len(left) - 1; i >= 0; i-- {
 		for _, vD := range right {
 			if left[i] == vD {
@@ -95,5 +107,6 @@ func Except(left, right []string) []string {
 			}
 		}
 	}
+
 	return left
 }

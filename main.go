@@ -4,23 +4,27 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/fatih/color"
 	flag "github.com/spf13/pflag"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
 const (
 	defaultMaxCount  = 10
+	defaultNamespace = "default"
 	acceptedK8sKinds = `(Service|StatefulSet|Deployment|CronJob|LimitRange|DaemonSet)`
+	defaultKind      = "All"
 )
 
 func main() {
 	var (
-		context    string
-		dryRun     bool
-		kubeconfig string
-		maxCount   int64
-		namespace  string
-		directory  string
+		kubeconfig           string
+		context              string
+		namespace            string
+		kind                 string
+		maxCount             int64
+		dryRun               bool
+		restrictedNamespaces = []string{"kube-system", "kube-public", "kube-node-lease", "spinnaker"}
 	)
 
 	flags := flag.NewFlagSet("k8stail", flag.ExitOnError)
@@ -28,25 +32,24 @@ func main() {
 		flags.PrintDefaults()
 	}
 
-	flags.StringVar(&context, "context", "", "Kubernetes context")
-	flags.BoolVar(&dryRun, "dry-run", true, "Dry run")
 	flags.StringVar(&kubeconfig, "kubeconfig", "", "Path of kubeconfig")
-	flags.Int64Var(&maxCount, "max-count", int64(defaultMaxCount), "Number of Jobs to remain")
-	flags.StringVar(&namespace, "namespace", "", "Kubernetes namespace")
-	flags.StringVar(&directory, "directory", "", "Path to directory with manifests (_commons will be added automatically)")
+	flags.StringVar(&context, "context", "", "Kubernetes context")
+	flags.StringVar(&namespace, "namespace", string(defaultNamespace), "Kubernetes namespace")
+	flags.StringVar(&kind, "kind", string(defaultKind), "Kubernetes kind for cleaning. Can be one of Service|StatefulSet|Deployment|CronJob|LimitRange|DaemonSet|Jobs or All")
+	flags.BoolVar(&dryRun, "dry-run", true, "Dry run")
+	flags.Int64Var(&maxCount, "max-count", int64(defaultMaxCount), "Number of Jobs to remain, only if selected kind is Jobs")
+	flags.StringSlice("directories", nil, "Paths to directories with manifests separated by commas")
 
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
-	if directory == "" {
-		fmt.Fprintln(os.Stderr, "--directory must be set")
+	dirs, err := flags.GetStringSlice("directories")
+	if len(dirs) == 0 {
+		color.Red("No directories for analyze, exit")
 		os.Exit(1)
 	}
-
-	directories := []string{"/Users/ealebed/Code/loopme/k8s/datacenters/_commons"}
-	directories = append(directories, directory)
 
 	if kubeconfig == "" {
 		if os.Getenv("KUBECONFIG") != "" {
@@ -66,8 +69,8 @@ func main() {
 
 	client = c
 
-	if namespace == "kube-system" {
-		fmt.Println("  !!! You can't manage this namespace")
+	if stringInSlice(namespace, restrictedNamespaces) {
+		color.Red("You can't manage namespace %s\n", namespace)
 		os.Exit(1)
 	}
 	if namespace == "" {
@@ -77,18 +80,43 @@ func main() {
 			os.Exit(1)
 		}
 		if namespaceInConfig == "" {
-			namespace = "default"
+			namespace = defaultNamespace
 		} else {
 			namespace = namespaceInConfig
 		}
 	}
 
-	client.DeploymentsCleaner(namespace, dryRun, directories)
-	client.ServicesCleaner(namespace, dryRun, directories)
-	client.CronJobsCleaner(namespace, dryRun, directories)
-	client.StatefulSetsCleaner(namespace, dryRun, directories)
-	client.DaemonSetsCleaner(namespace, dryRun, directories)
-	client.LimitRangesCleaner(namespace, dryRun, directories)
-	client.JobAndPodCleaner(namespace, maxCount, dryRun)
+	switch kind {
+	case "Service":
+		client.ServicesCleaner(namespace, dryRun, dirs)
+	case "StatefulSet":
+		client.StatefulSetsCleaner(namespace, dryRun, dirs)
+	case "Deployment":
+		client.DeploymentsCleaner(namespace, dryRun, dirs)
+	case "CronJob":
+		client.CronJobsCleaner(namespace, dryRun, dirs)
+	case "LimitRange":
+		client.LimitRangesCleaner(namespace, dryRun, dirs)
+	case "DaemonSet":
+		client.DaemonSetsCleaner(namespace, dryRun, dirs)
+	case "Jobs":
+		client.JobAndPodCleaner(namespace, maxCount, dryRun)
+	case "All":
+		client.DeploymentsCleaner(namespace, dryRun, dirs)
+		client.ServicesCleaner(namespace, dryRun, dirs)
+		client.CronJobsCleaner(namespace, dryRun, dirs)
+		client.StatefulSetsCleaner(namespace, dryRun, dirs)
+		client.DaemonSetsCleaner(namespace, dryRun, dirs)
+		client.LimitRangesCleaner(namespace, dryRun, dirs)
+		client.JobAndPodCleaner(namespace, maxCount, dryRun)
+	}
+}
 
+func stringInSlice(a string, list []string) bool {
+	for _, b := range list {
+		if b == a {
+			return true
+		}
+	}
+	return false
 }
