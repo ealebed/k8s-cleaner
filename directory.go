@@ -48,12 +48,16 @@ func CollectObjectsFromDir(directories []string) (map[string][]string, error) {
 				decode := scheme.Codecs.UniversalDeserializer().Decode
 				obj, groupVersionKind, err := decode([]byte(file), nil, nil)
 				if err != nil {
-					color.Red(fmt.Sprintf("Error while decoding YAML object. Err was: %s", err))
+					if debug {
+						color.Red(fmt.Sprintf("Error while decoding YAML object. Err was: %s", err))
+					}
 					continue
 				}
 
 				if !acceptedK8sTypes.MatchString(groupVersionKind.Kind) {
-					color.Cyan("Skipping object with type: %s", groupVersionKind.Kind)
+					if debug {
+						color.Cyan("Skipping object with type: %s", groupVersionKind.Kind)
+					}
 				} else {
 
 					switch obj.(type) {

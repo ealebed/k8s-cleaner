@@ -14,6 +14,7 @@ const (
 	defaultNamespace = "default"
 	acceptedK8sKinds = `(Service|StatefulSet|Deployment|CronJob|LimitRange|DaemonSet)`
 	defaultKind      = "All"
+	debug            = false
 )
 
 func main() {
