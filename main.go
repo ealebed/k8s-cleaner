@@ -11,7 +11,6 @@ import (
 
 const (
 	defaultMaxCount  = 10
-	defaultNamespace = "default"
 	acceptedK8sKinds = `(Service|StatefulSet|Deployment|CronJob|LimitRange|DaemonSet)`
 	defaultKind      = "All"
 	debug            = false
@@ -21,11 +20,11 @@ func main() {
 	var (
 		kubeconfig           string
 		context              string
-		namespace            string
 		kind                 string
 		maxCount             int64
 		dryRun               bool
 		restrictedNamespaces = []string{"kube-system", "kube-public", "kube-node-lease", "spinnaker"}
+		defaultNamespaces    = []string{"default", "cert-manager", "logging", "monitoring"}
 	)
 
 	flags := flag.NewFlagSet("k8stail", flag.ExitOnError)
@@ -35,7 +34,7 @@ func main() {
 
 	flags.StringVar(&kubeconfig, "kubeconfig", "", "Path of kubeconfig")
 	flags.StringVar(&context, "context", "", "Kubernetes context")
-	flags.StringVar(&namespace, "namespace", string(defaultNamespace), "Kubernetes namespace")
+	flags.StringSlice("namespaces", defaultNamespaces, "List namespaces separated by commas")
 	flags.StringVar(&kind, "kind", string(defaultKind), "Kubernetes kind for cleaning. Can be one of Service|StatefulSet|Deployment|CronJob|LimitRange|DaemonSet|Jobs or All")
 	flags.BoolVar(&dryRun, "dry-run", true, "Dry run")
 	flags.Int64Var(&maxCount, "max-count", int64(defaultMaxCount), "Number of Jobs to remain, only if selected kind is Jobs")
@@ -70,46 +69,53 @@ func main() {
 
 	client = c
 
-	if stringInSlice(namespace, restrictedNamespaces) {
-		color.Red("You can't manage namespace %s\n", namespace)
-		os.Exit(1)
+	namespaces, err := flags.GetStringSlice("namespaces")
+	if len(namespaces) == 0 {
+		namespaces = defaultNamespaces
 	}
-	if namespace == "" {
-		namespaceInConfig, err := c.NamespaceInConfig()
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+	for _, namespace := range namespaces {
+		color.Cyan("     === NAMESPACE %s\n", namespace)
+		if stringInSlice(namespace, restrictedNamespaces) {
+			color.Red("You can't manage namespace %s\n", namespace)
+			continue
 		}
-		if namespaceInConfig == "" {
-			namespace = defaultNamespace
-		} else {
-			namespace = namespaceInConfig
-		}
-	}
+		// if namespace == "" {
+		// 	namespaceInConfig, err := c.NamespaceInConfig()
+		// 	if err != nil {
+		// 		fmt.Fprintln(os.Stderr, err)
+		// 		os.Exit(1)
+		// 	}
+		// 	if namespaceInConfig == "" {
+		// 		namespace = "ip-location-mapper"
+		// 	} else {
+		// 		namespace = namespaceInConfig
+		// 	}
+		// }
 
-	switch kind {
-	case "Service":
-		client.ServicesCleaner(namespace, dryRun, dirs)
-	case "StatefulSet":
-		client.StatefulSetsCleaner(namespace, dryRun, dirs)
-	case "Deployment":
-		client.DeploymentsCleaner(namespace, dryRun, dirs)
-	case "CronJob":
-		client.CronJobsCleaner(namespace, dryRun, dirs)
-	case "LimitRange":
-		client.LimitRangesCleaner(namespace, dryRun, dirs)
-	case "DaemonSet":
-		client.DaemonSetsCleaner(namespace, dryRun, dirs)
-	case "Jobs":
-		client.JobAndPodCleaner(namespace, maxCount, dryRun)
-	case "All":
-		client.DeploymentsCleaner(namespace, dryRun, dirs)
-		client.ServicesCleaner(namespace, dryRun, dirs)
-		client.CronJobsCleaner(namespace, dryRun, dirs)
-		client.StatefulSetsCleaner(namespace, dryRun, dirs)
-		client.DaemonSetsCleaner(namespace, dryRun, dirs)
-		client.LimitRangesCleaner(namespace, dryRun, dirs)
-		client.JobAndPodCleaner(namespace, maxCount, dryRun)
+		switch kind {
+		case "Service":
+			client.ServicesCleaner(namespace, dryRun, dirs)
+		case "StatefulSet":
+			client.StatefulSetsCleaner(namespace, dryRun, dirs)
+		case "Deployment":
+			client.DeploymentsCleaner(namespace, dryRun, dirs)
+		case "CronJob":
+			client.CronJobsCleaner(namespace, dryRun, dirs)
+		case "LimitRange":
+			client.LimitRangesCleaner(namespace, dryRun, dirs)
+		case "DaemonSet":
+			client.DaemonSetsCleaner(namespace, dryRun, dirs)
+		case "Jobs":
+			client.JobAndPodCleaner(namespace, maxCount, dryRun)
+		case "All":
+			client.DeploymentsCleaner(namespace, dryRun, dirs)
+			client.ServicesCleaner(namespace, dryRun, dirs)
+			client.CronJobsCleaner(namespace, dryRun, dirs)
+			client.StatefulSetsCleaner(namespace, dryRun, dirs)
+			client.DaemonSetsCleaner(namespace, dryRun, dirs)
+			client.LimitRangesCleaner(namespace, dryRun, dirs)
+			client.JobAndPodCleaner(namespace, maxCount, dryRun)
+		}
 	}
 }
 

@@ -8,9 +8,6 @@ If object is present in running cluster, but absent in local directory tool will
 ### From source
 
 ```bash
-$ go get -d github.com/ealebed/k8s-cleaner
-$ cd $GOPATH/src/github.com/ealebed/k8s-cleaner
-$ go get -d -v
 $ go build -v ./
 ```
 
